@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en" class="preload">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Receipt Extractor</title>
+<meta name="description" content="Extract sender, amount and date from receipts with PaddleOCR and GPT-4o." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%236366f1'/%3E%3Cstop offset='1' stop-color='%23d946ef'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='9' fill='url(%23g)'/%3E%3Cpath d='M10 7v18l2-1.2 2 1.2 2-1.2 2 1.2 2-1.2 2 1.2V7M13 13h6M13 17h6' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script>
+  // Theme before first paint; reveal fallback if the animation library never loads.
+  (function () {
+    try { var t = localStorage.getItem("rx-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+    setTimeout(function () { document.documentElement.classList.remove("preload"); }, 1500);
+  })();
+</script>
+<style>
+  :root {
+    --bg: #f5f6fb;
+    --glow-1: rgba(99, 102, 241, .20);
+    --glow-2: rgba(217, 70, 239, .14);
+    --glow-3: rgba(16, 185, 129, .10);
+    --surface: rgba(255, 255, 255, .76);
+    --surface-2: #ffffff;
+    --inset: #f1f3f9;
+    --text: #0e1330;
+    --muted: #5d6784;
+    --faint: #98a1bb;
+    --line: rgba(14, 19, 48, .08);
+    --line-strong: rgba(14, 19, 48, .14);
+    --ring: rgba(99, 102, 241, .38);
+    --shadow: 0 1px 2px rgba(14, 19, 48, .04), 0 18px 40px -18px rgba(14, 19, 48, .22);
+    --shadow-lg: 0 2px 4px rgba(14, 19, 48, .04), 0 30px 60px -24px rgba(79, 70, 229, .35);
+    --brand-a: #6366f1; --brand-b: #8b5cf6; --brand-c: #d946ef;
+    --grad: linear-gradient(120deg, var(--brand-a), var(--brand-b) 50%, var(--brand-c));
+    --violet: #7c3aed; --violet-soft: rgba(124, 58, 237, .10);
+    --emerald: #059669; --emerald-soft: rgba(5, 150, 105, .10);
+    --amber: #d97706; --amber-soft: rgba(217, 119, 6, .12);
+    --danger: #e11d48; --danger-soft: rgba(225, 29, 72, .10);
+    --success: #059669;
+    --radius: 20px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #080a14;
+      --glow-1: rgba(99, 102, 241, .26);
+      --glow-2: rgba(217, 70, 239, .16);
+      --glow-3: rgba(16, 185, 129, .08);
+      --surface: rgba(19, 22, 38, .72);
+      --surface-2: #151a2c;
+      --inset: #0e1222;
+      --text: #eaedf7;
+      --muted: #a0a8c3;
+      --faint: #6b7493;
+      --line: rgba(255, 255, 255, .07);
+      --line-strong: rgba(255, 255, 255, .13);
+      --ring: rgba(139, 92, 246, .5);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 18px 40px -18px rgba(0, 0, 0, .7);
+      --shadow-lg: 0 2px 4px rgba(0, 0, 0, .3), 0 30px 60px -24px rgba(99, 102, 241, .45);
+      --violet: #a78bfa; --violet-soft: rgba(167, 139, 250, .14);
+      --emerald: #34d399; --emerald-soft: rgba(52, 211, 153, .13);
+      --amber: #fbbf24; --amber-soft: rgba(251, 191, 36, .13);
+      --danger: #fb7185; --danger-soft: rgba(251, 113, 133, .12);
+      --success: #34d399;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #080a14;
+    --glow-1: rgba(99, 102, 241, .26);
+    --glow-2: rgba(217, 70, 239, .16);
+    --glow-3: rgba(16, 185, 129, .08);
+    --surface: rgba(19, 22, 38, .72);
+    --surface-2: #151a2c;
+    --inset: #0e1222;
+    --text: #eaedf7;
+    --muted: #a0a8c3;
+    --faint: #6b7493;
+    --line: rgba(255, 255, 255, .07);
+    --line-strong: rgba(255, 255, 255, .13);
+    --ring: rgba(139, 92, 246, .5);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 18px 40px -18px rgba(0, 0, 0, .7);
+    --shadow-lg: 0 2px 4px rgba(0, 0, 0, .3), 0 30px 60px -24px rgba(99, 102, 241, .45);
+    --violet: #a78bfa; --violet-soft: rgba(167, 139, 250, .14);
+    --emerald: #34d399; --emerald-soft: rgba(52, 211, 153, .13);
+    --amber: #fbbf24; --amber-soft: rgba(251, 191, 36, .13);
+    --danger: #fb7185; --danger-soft: rgba(251, 113, 133, .12);
+    --success: #34d399;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; scroll-padding-top: 84px; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font: 15px/1.55 "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased; overflow-x: hidden;
+  }
+  /* Ambient gradient backdrop */
+  .backdrop { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+  .backdrop span { position: absolute; border-radius: 50%; filter: blur(80px); }
+  .backdrop .b1 { width: 620px; height: 620px; background: var(--glow-1); top: -220px; left: -160px; animation: drift 22s ease-in-out infinite alternate; }
+  .backdrop .b2 { width: 520px; height: 520px; background: var(--glow-2); top: -120px; right: -180px; animation: drift 26s ease-in-out infinite alternate-reverse; }
+  .backdrop .b3 { width: 560px; height: 560px; background: var(--glow-3); bottom: -260px; left: 30%; animation: drift 30s ease-in-out infinite alternate; }
+  .backdrop::after {
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(var(--line) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 30%, transparent 75%);
+  }
+  @keyframes drift { to { transform: translate3d(60px, 40px, 0) scale(1.08); } }
+
+  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 16px; }
+  @media (min-width: 640px) { .wrap { padding: 0 28px; } }
+
+  /* Header */
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    backdrop-filter: saturate(160%) blur(16px); -webkit-backdrop-filter: saturate(160%) blur(16px);
+    background: color-mix(in srgb, var(--bg) 70%, transparent);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; min-width: 0; }
+  .logo {
+    width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; flex: none;
+    background: var(--grad); color: #fff; box-shadow: 0 8px 20px -6px rgba(99, 102, 241, .6);
+  }
+  .brand-name { font-weight: 800; font-size: 17px; letter-spacing: -.02em; white-space: nowrap; }
+  .brand-name em { font-style: normal; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .brand-tag { font-size: 12px; color: var(--muted); margin-left: 4px; padding-left: 10px; border-left: 1px solid var(--line-strong); white-space: nowrap; }
+  @media (max-width: 560px) { .brand-tag { display: none; } }
+  .tools { display: flex; align-items: center; gap: 8px; }
+  .seg {
+    display: inline-flex; padding: 3px; border-radius: 999px; background: var(--inset); border: 1px solid var(--line);
+  }
+  .seg button {
+    border: 0; background: transparent; color: var(--muted); font: 600 12px/1 inherit; letter-spacing: .04em;
+    padding: 7px 11px; border-radius: 999px; cursor: pointer; transition: color .2s, background .2s;
+  }
+  .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .icon-btn {
+    width: 38px; height: 38px; display: grid; place-items: center; border-radius: 12px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+    transition: color .2s, border-color .2s, box-shadow .2s;
+  }
+  .icon-btn:hover { color: var(--text); border-color: var(--line-strong); box-shadow: 0 0 0 4px var(--ring); }
+  .icon-btn .moon { display: none; }
+  :root[data-theme="dark"] .icon-btn .sun { display: none; }
+  :root[data-theme="dark"] .icon-btn .moon { display: block; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .icon-btn .sun { display: none; }
+    :root:not([data-theme="light"]) .icon-btn .moon { display: block; }
+  }
+
+  /* Hero */
+  .hero { padding: 48px 0 28px; text-align: center; }
+  @media (min-width: 900px) { .hero { padding: 80px 0 40px; } }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px 6px 8px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+    font-size: 13px; font-weight: 600; color: var(--muted);
+  }
+  .eyebrow .dot {
+    width: 22px; height: 22px; border-radius: 999px; background: var(--grad); display: grid; place-items: center; color: #fff;
+  }
+  h1 {
+    margin: 20px auto 14px; max-width: 820px;
+    font-size: clamp(2rem, 6vw, 3.6rem); line-height: 1.06; letter-spacing: -.035em; font-weight: 800;
+  }
+  h1 .grad {
+    background: var(--grad); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: sheen 8s linear infinite;
+  }
+  @keyframes sheen { to { background-position: 200% center; } }
+  .lede { margin: 0 auto; max-width: 620px; color: var(--muted); font-size: clamp(15px, 2.2vw, 17.5px); }
+
+  /* Pipeline stepper */
+  .steps {
+    list-style: none; margin: 36px auto 0; padding: 0; max-width: 860px;
+    display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 10px;
+  }
+  .step {
+    display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px 14px; border-radius: 16px;
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow);
+    transition: border-color .35s, box-shadow .35s;
+  }
+  .step .ico {
+    width: 38px; height: 38px; border-radius: 12px; flex: none; display: grid; place-items: center;
+    background: var(--inset); color: var(--muted); transition: background .35s, color .35s;
+    position: relative;
+  }
+  .step .t { font-weight: 700; font-size: 14px; line-height: 1.2; }
+  .step .d { font-size: 12.5px; color: var(--muted); line-height: 1.35; }
+  .step[data-state="active"] { border-color: var(--ring); box-shadow: 0 0 0 4px color-mix(in srgb, var(--brand-b) 16%, transparent), var(--shadow); }
+  .step[data-state="active"] .ico { background: var(--grad); color: #fff; }
+  .step[data-state="active"] .ico::after {
+    content: ""; position: absolute; inset: -4px; border-radius: 15px; border: 2px solid var(--brand-b);
+    animation: pulse 1.4s ease-out infinite;
+  }
+  .step[data-state="done"] .ico { background: var(--emerald-soft); color: var(--success); }
+  .step[data-state="error"] .ico { background: var(--danger-soft); color: var(--danger); }
+  @keyframes pulse { from { opacity: .8; transform: scale(.9); } to { opacity: 0; transform: scale(1.25); } }
+  .conn { width: 36px; height: 2px; border-radius: 2px; background: var(--line-strong); position: relative; overflow: hidden; }
+  .conn::after {
+    content: ""; position: absolute; inset: 0; background: var(--grad); transform: scaleX(var(--p, 0)); transform-origin: left;
+    transition: transform .6s cubic-bezier(.22, 1, .36, 1);
+  }
+  @media (max-width: 760px) {
+    .steps { grid-template-columns: 1fr auto 1fr auto 1fr; gap: 6px; }
+    .step { flex-direction: column; text-align: center; gap: 8px; padding: 12px 6px; }
+    .step .d { display: none; }
+    .step .t { font-size: 12.5px; }
+    .conn { width: 14px; }
+  }
+
+  /* Main grid */
+  .grid { display: grid; gap: 20px; padding: 28px 0 56px; grid-template-columns: 1fr; }
+  @media (min-width: 940px) { .grid { grid-template-columns: 1fr 1.05fr; gap: 28px; padding: 36px 0 88px; } }
+  .card {
+    position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 22px;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  }
+  @media (min-width: 640px) { .card { padding: 28px; } }
+  .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+  .card-head h2 { margin: 0; font-size: 18px; letter-spacing: -.015em; }
+  .card-head p { margin: 2px 0 0; font-size: 13.5px; color: var(--muted); }
+  .num {
+    width: 28px; height: 28px; border-radius: 9px; display: inline-grid; place-items: center; flex: none;
+    font-size: 13px; font-weight: 800; color: #fff; background: var(--grad); margin-right: 10px; vertical-align: -6px;
+  }
+
+  /* Dropzone */
+  .dropzone {
+    position: relative; display: block; border-radius: 16px; padding: 36px 20px; text-align: center; cursor: pointer;
+    background:
+      linear-gradient(var(--surface-2), var(--surface-2)) padding-box,
+      repeating-linear-gradient(135deg, var(--line-strong) 0 8px, transparent 8px 14px) border-box;
+    border: 2px dashed transparent;
+    transition: box-shadow .25s, background .25s;
+    outline: none;
+  }
+  .dropzone:hover, .dropzone:focus-visible { box-shadow: 0 0 0 4px var(--ring); }
+  .dropzone.over {
+    background:
+      linear-gradient(color-mix(in srgb, var(--brand-b) 7%, var(--surface-2)), color-mix(in srgb, var(--brand-b) 7%, var(--surface-2))) padding-box,
+      var(--grad) border-box;
+    box-shadow: 0 0 0 6px var(--ring);
+  }
+  .dz-icon {
+    width: 64px; height: 64px; margin: 0 auto 16px; border-radius: 20px; display: grid; place-items: center; color: #fff;
+    background: var(--grad); box-shadow: 0 16px 30px -10px rgba(124, 58, 237, .55);
+    animation: float 4s ease-in-out infinite;
+  }
+  @keyframes float { 50% { transform: translateY(-6px); } }
+  .dz-title { font-weight: 700; font-size: 16px; }
+  .dz-sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .dz-sub u { text-decoration: none; font-weight: 700; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .dz-meta { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 18px; }
+  .chip {
+    font-size: 11.5px; font-weight: 600; color: var(--muted); padding: 4px 9px; border-radius: 999px;
+    background: var(--inset); border: 1px solid var(--line);
+  }
+  .dz-hint { margin-top: 12px; font-size: 12.5px; color: var(--faint); }
+  kbd {
+    font: 600 11px/1 "JetBrains Mono", ui-monospace, monospace; padding: 3px 6px; border-radius: 6px;
+    background: var(--inset); border: 1px solid var(--line-strong); border-bottom-width: 2px; color: var(--muted);
+  }
+  @media (hover: none) { .dz-hint { display: none; } }
+
+  /* Preview */
+  .preview[hidden] { display: none; }
+  .frame {
+    position: relative; border-radius: 16px; overflow: hidden; background: var(--inset); border: 1px solid var(--line);
+    display: grid; place-items: center; aspect-ratio: 4 / 3; max-height: 420px; width: 100%;
+  }
+  .frame img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .scan {
+    position: absolute; left: 0; right: 0; height: 90px; top: -90px; pointer-events: none; opacity: 0;
+    background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--brand-b) 35%, transparent) 85%, var(--brand-c));
+    border-bottom: 2px solid var(--brand-c);
+  }
+  .busy .scan { opacity: 1; animation: scan 1.8s cubic-bezier(.45, 0, .55, 1) infinite; }
+  @keyframes scan { from { top: -90px; } to { top: 100%; } }
+  .file-row {
+    display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 10px 10px 10px 12px; border-radius: 14px;
+    background: var(--surface-2); border: 1px solid var(--line);
+  }
+  .file-ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--violet-soft); color: var(--violet); flex: none; }
+  .file-meta { min-width: 0; flex: 1; }
+  .file-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .file-size { font-size: 12px; color: var(--muted); }
+  .ghost {
+    border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 10px;
+    padding: 7px 11px; font: 600 12.5px/1 inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+    transition: color .2s, border-color .2s, background .2s, box-shadow .2s;
+  }
+  .ghost:hover { color: var(--text); border-color: var(--line-strong); background: var(--inset); }
+  .ghost.danger:hover { color: var(--danger); background: var(--danger-soft); border-color: transparent; }
+  .ghost.icon-only { padding: 7px; }
+
+  /* Helper / errors */
+  .helper { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; padding: 12px 14px; border-radius: 12px; font-size: 13.5px; }
+  .helper[hidden] { display: none; }
+  .helper.error { background: var(--danger-soft); color: var(--danger); }
+  .helper svg { flex: none; margin-top: 1px; }
+
+  /* Primary button */
+  .cta {
+    position: relative; overflow: hidden; width: 100%; margin-top: 18px; height: 52px; border: 0; border-radius: 14px; cursor: pointer;
+    font: 700 15.5px/1 inherit; color: #fff; letter-spacing: .01em;
+    background: var(--grad); background-size: 160% auto; background-position: 0% center;
+    box-shadow: 0 14px 30px -12px rgba(124, 58, 237, .65), inset 0 1px 0 rgba(255, 255, 255, .25);
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: background-position .5s, box-shadow .3s, opacity .2s, filter .2s;
+  }
+  .cta:hover:not(:disabled) { background-position: 100% center; box-shadow: 0 18px 38px -12px rgba(124, 58, 237, .8), inset 0 1px 0 rgba(255, 255, 255, .25); }
+  .cta:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ring); }
+  .cta:disabled { cursor: not-allowed; filter: grayscale(.35); opacity: .55; box-shadow: none; }
+  .cta.busy:disabled { opacity: 1; filter: none; cursor: progress; }
+  .cta .shine {
+    position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%);
+    transform: translateX(-100%);
+  }
+  .cta:hover:not(:disabled) .shine { animation: shine 1.1s ease; }
+  @keyframes shine { to { transform: translateX(100%); } }
+  .spinner {
+    width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.35); border-top-color: #fff;
+    animation: spin .7s linear infinite; display: none;
+  }
+  .cta.busy .spinner { display: block; }
+  .cta.busy .cta-ico { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: rgba(255,255,255,.7); transform: scaleX(0); transform-origin: left; transition: transform .2s; }
+
+  /* Results */
+  .badge {
+    display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 999px; flex: none;
+    font-size: 12px; font-weight: 700; background: var(--inset); color: var(--muted); border: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .badge .bdot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .badge[data-state="busy"] { color: var(--brand-b); background: color-mix(in srgb, var(--brand-b) 10%, transparent); border-color: transparent; }
+  .badge[data-state="busy"] .bdot { animation: blink 1s ease-in-out infinite; }
+  .badge[data-state="done"] { color: var(--success); background: var(--emerald-soft); border-color: transparent; }
+  .badge[data-state="error"] { color: var(--danger); background: var(--danger-soft); border-color: transparent; }
+  @keyframes blink { 50% { opacity: .25; } }
+
+  .empty { text-align: center; padding: 36px 12px 28px; }
+  .empty[hidden] { display: none; }
+  .empty-art { width: 150px; height: 120px; margin: 0 auto 18px; display: block; }
+  .empty h3 { margin: 0 0 6px; font-size: 16px; }
+  .empty p { margin: 0 auto; max-width: 340px; color: var(--muted); font-size: 14px; }
+
+  .fields { display: grid; gap: 12px; }
+  .fields[hidden] { display: none; }
+  .tile {
+    --c: var(--violet); --c-soft: var(--violet-soft);
+    position: relative; display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 16px;
+    background: var(--surface-2); border: 1px solid var(--line); overflow: hidden;
+    transition: box-shadow .25s, border-color .25s;
+  }
+  .tile::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 14px; width: 3px; border-radius: 0 3px 3px 0; background: var(--c); opacity: .9; }
+  .tile:hover { border-color: color-mix(in srgb, var(--c) 35%, transparent); box-shadow: 0 0 0 4px var(--c-soft), var(--shadow); }
+  .tile.amount { --c: var(--emerald); --c-soft: var(--emerald-soft); }
+  .tile.date { --c: var(--amber); --c-soft: var(--amber-soft); }
+  .tile .ti { width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; flex: none; background: var(--c-soft); color: var(--c); }
+  .tile .tb { min-width: 0; flex: 1; }
+  .tile label { display: block; font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .tile .val { font-size: clamp(17px, 2.6vw, 21px); font-weight: 800; letter-spacing: -.02em; word-break: break-word; line-height: 1.3; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .tile .val.missing { color: var(--faint); font-weight: 600; font-style: italic; font-size: 16px; letter-spacing: 0; }
+  .tile .sub { font-size: 12px; color: var(--muted); margin-top: 2px; font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .tile .sub:empty { display: none; }
+  .tile .copy { flex: none; }
+  .skel {
+    height: 22px; width: 70%; border-radius: 7px; margin-top: 6px;
+    background: linear-gradient(90deg, var(--inset) 25%, color-mix(in srgb, var(--brand-b) 12%, var(--inset)) 50%, var(--inset) 75%);
+    background-size: 200% 100%; animation: shimmer 1.3s linear infinite;
+  }
+  @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+  .tile.loading .val, .tile.loading .sub, .tile.loading .copy { display: none; }
+  .tile:not(.loading) .skel { display: none; }
+
+  .success {
+    display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; margin-bottom: 14px;
+    background: var(--emerald-soft); color: var(--success); font-weight: 700; font-size: 14px;
+  }
+  .success[hidden] { display: none; }
+  .check { width: 28px; height: 28px; flex: none; }
+  .check circle { stroke-dasharray: 76; stroke-dashoffset: 76; animation: draw .6s ease-out forwards; }
+  .check path { stroke-dasharray: 20; stroke-dashoffset: 20; animation: draw .35s .45s ease-out forwards; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+  .success .time { margin-left: auto; font-weight: 600; font-size: 12.5px; opacity: .8; }
+
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .actions[hidden] { display: none; }
+
+  details.raw { margin-top: 18px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); overflow: hidden; }
+  details.raw summary {
+    list-style: none; cursor: pointer; padding: 13px 16px; display: flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 14px;
+  }
+  details.raw summary::-webkit-details-marker { display: none; }
+  details.raw summary .count { margin-left: auto; font-weight: 600; font-size: 12px; color: var(--muted); }
+  details.raw summary .chev { transition: transform .3s; color: var(--muted); }
+  details.raw[open] summary .chev { transform: rotate(180deg); }
+  details.raw pre {
+    margin: 0; padding: 14px 16px 16px; border-top: 1px solid var(--line); max-height: 280px; overflow: auto;
+    white-space: pre-wrap; word-break: break-word;
+    font: 13px/1.65 "JetBrains Mono", ui-monospace, monospace; color: var(--muted); background: var(--inset);
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, calc(100% + 40px)); z-index: 50;
+    opacity: 0; visibility: hidden;
+    display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-radius: 14px; max-width: calc(100vw - 32px);
+    background: var(--text); color: var(--bg); font-weight: 600; font-size: 14px; box-shadow: var(--shadow-lg);
+    transition: transform .45s cubic-bezier(.22, 1, .36, 1), opacity .3s, visibility 0s .45s;
+  }
+  .toast.show { transform: translate(-50%, 0); opacity: 1; visibility: visible; transition: transform .45s cubic-bezier(.22, 1, .36, 1), opacity .3s; }
+  .toast .tdot { width: 8px; height: 8px; border-radius: 50%; background: var(--emerald); flex: none; }
+
+  footer { border-top: 1px solid var(--line); padding: 22px 0 32px; color: var(--faint); font-size: 13px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; justify-content: space-between; }
+  footer .dotsep { display: inline-flex; gap: 14px; flex-wrap: wrap; }
+
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .preload [data-reveal] { opacity: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="backdrop" aria-hidden="true"><span class="b1"></span><span class="b2"></span><span class="b3"></span></div>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Receipt AI">
+      <span class="logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18l2.5-1.5L10 21l2-1.5 2 1.5 2.5-1.5L19 21V3l-2.5 1.5L14 3l-2 1.5L10 3 7.5 4.5z"/><path d="M9 9h6M9 13h6"/></svg>
+      </span>
+      <span class="brand-name">Receipt<em>AI</em></span>
+      <span class="brand-tag" data-i18n="brandTag"></span>
+    </a>
+    <div class="tools">
+      <div class="seg" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="fr" aria-pressed="false">FR</button>
+      </div>
+      <button type="button" class="icon-btn" id="themeBtn" data-i18n-aria="theme">
+        <svg class="sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <div class="eyebrow" data-reveal="hero">
+      <span class="dot"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.2H22l-6.2 4.5 2.4 7.3L12 16.5 5.8 21l2.4-7.3L2 9.2h7.6z"/></svg></span>
+      <span data-i18n="eyebrow"></span>
+    </div>
+    <h1 data-reveal="hero"><span data-i18n="heroA"></span> <span class="grad" data-i18n="heroB"></span></h1>
+    <p class="lede" data-reveal="hero" data-i18n="lede"></p>
+
+    <ol class="steps" aria-label="Pipeline">
+      <li class="step" data-step="0" data-state="idle" data-reveal="step">
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg></span>
+        <span><span class="t" data-i18n="s1t"></span><br /><span class="d" data-i18n="s1d"></span></span>
+      </li>
+      <li class="conn" data-conn="0" aria-hidden="true" data-reveal="step"></li>
+      <li class="step" data-step="1" data-state="idle" data-reveal="step">
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 9h10M7 12h10M7 15h6"/></svg></span>
+        <span><span class="t" data-i18n="s2t"></span><br /><span class="d" data-i18n="s2d"></span></span>
+      </li>
+      <li class="conn" data-conn="1" aria-hidden="true" data-reveal="step"></li>
+      <li class="step" data-step="2" data-state="idle" data-reveal="step">
+        <span class="ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+        <span><span class="t" data-i18n="s3t"></span><br /><span class="d" data-i18n="s3d"></span></span>
+      </li>
+    </ol>
+  </section>
+
+  <section class="grid">
+    <!-- Upload -->
+    <article class="card" data-reveal="card" id="uploadCard">
+      <div class="card-head">
+        <div>
+          <h2><span class="num">1</span><span data-i18n="upTitle"></span></h2>
+          <p data-i18n="upSub"></p>
+        </div>
+      </div>
+
+      <div class="dropzone" id="drop" role="button" tabindex="0" data-i18n-aria="dropTitle">
+        <div class="dz-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M12 12v9M8 16l4-4 4 4"/></svg>
+        </div>
+        <div class="dz-title" data-i18n="dropTitle"></div>
+        <div class="dz-sub"><span data-i18n="dropOr"></span> <u data-i18n="browse"></u></div>
+        <div class="dz-meta">
+          <span class="chip">PNG</span><span class="chip">JPG</span><span class="chip">WEBP</span><span class="chip">BMP</span><span class="chip">TIFF</span><span class="chip" data-i18n="maxSize"></span>
+        </div>
+        <div class="dz-hint"><span data-i18n="pasteA"></span> <kbd>Ctrl</kbd> + <kbd>V</kbd></div>
+        <input type="file" id="file" accept=".png,.jpg,.jpeg,.bmp,.webp,.tif,.tiff,image/*" hidden />
+      </div>
+
+      <div class="preview" id="preview" hidden>
+        <div class="frame" id="frame">
+          <img id="previewImg" alt="" />
+          <div class="scan" aria-hidden="true"></div>
+        </div>
+        <div class="file-row">
+          <span class="file-ico"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span>
+          <div class="file-meta">
+            <div class="file-name" id="fileName"></div>
+            <div class="file-size" id="fileSize"></div>
+          </div>
+          <button type="button" class="ghost" id="replaceBtn"><span data-i18n="replace"></span></button>
+          <button type="button" class="ghost danger icon-only" id="removeBtn" data-i18n-aria="remove">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="helper error" id="err" role="alert" hidden>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <span id="errText"></span>
+      </div>
+
+      <button type="button" class="cta" id="go" disabled>
+        <span class="shine" aria-hidden="true"></span>
+        <span class="spinner" aria-hidden="true"></span>
+        <svg class="cta-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17l.8 2.2L22 20l-2.2.8L19 23l-.8-2.2L16 20l2.2-.8z"/></svg>
+        <span id="goLabel" data-i18n="extract"></span>
+        <span class="progress" id="progress" aria-hidden="true"></span>
+      </button>
+    </article>
+
+    <!-- Results -->
+    <article class="card" data-reveal="card" id="resultCard" aria-live="polite">
+      <div class="card-head">
+        <div>
+          <h2><span class="num">2</span><span data-i18n="resTitle"></span></h2>
+          <p data-i18n="resSub"></p>
+        </div>
+        <span class="badge" id="badge" data-state="idle"><span class="bdot"></span><span id="badgeText" data-i18n="bIdle"></span></span>
+      </div>
+
+      <div class="empty" id="empty">
+        <svg class="empty-art" viewBox="0 0 150 120" fill="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="eg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset=".5" stop-color="#8b5cf6"/><stop offset="1" stop-color="#d946ef"/></linearGradient>
+          </defs>
+          <ellipse cx="75" cy="110" rx="46" ry="6" fill="currentColor" opacity=".06"/>
+          <g style="color: var(--line-strong)">
+            <path d="M45 12h60v88l-7.5-5-7.5 5-7.5-5-7.5 5-7.5-5-7.5 5-7.5-5-7.5 5z" fill="var(--surface-2)" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </g>
+          <rect x="56" y="26" width="38" height="6" rx="3" fill="url(#eg)" opacity=".85"/>
+          <rect x="56" y="42" width="24" height="4" rx="2" fill="var(--line-strong)"/>
+          <rect x="84" y="42" width="10" height="4" rx="2" fill="var(--line-strong)"/>
+          <rect x="56" y="52" width="30" height="4" rx="2" fill="var(--line-strong)"/>
+          <rect x="88" y="52" width="6" height="4" rx="2" fill="var(--line-strong)"/>
+          <rect x="56" y="62" width="20" height="4" rx="2" fill="var(--line-strong)"/>
+          <rect x="80" y="62" width="14" height="4" rx="2" fill="var(--line-strong)"/>
+          <path d="M56 76h38" stroke="var(--line-strong)" stroke-width="2" stroke-dasharray="3 3"/>
+          <rect x="72" y="82" width="22" height="6" rx="3" fill="url(#eg)" opacity=".6"/>
+          <circle cx="112" cy="30" r="14" fill="url(#eg)"/>
+          <path d="M112 24l1.6 4.4L118 30l-4.4 1.6L112 36l-1.6-4.4L106 30l4.4-1.6z" fill="#fff"/>
+        </svg>
+        <h3 data-i18n="emptyT"></h3>
+        <p data-i18n="emptyD"></p>
+      </div>
+
+      <div class="success" id="success" hidden>
+        <svg class="check" viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="14" r="12"/><path d="M9 14.5l3.2 3.2L19 11"/></svg>
+        <span data-i18n="successT"></span>
+        <span class="time" id="elapsed"></span>
+      </div>
+
+      <div class="fields" id="fields" hidden>
+        <div class="tile sender" data-reveal-tile>
+          <span class="ti"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>
+          <div class="tb"><label data-i18n="fSender"></label><div class="val" id="vSender"></div><div class="sub"></div><div class="skel"></div></div>
+          <button type="button" class="ghost icon-only copy" data-copy="sender_name" data-i18n-aria="copy"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg></button>
+        </div>
+        <div class="tile amount" data-reveal-tile>
+          <span class="ti"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/></svg></span>
+          <div class="tb"><label data-i18n="fAmount"></label><div class="val" id="vAmount"></div><div class="sub"></div><div class="skel" style="width:45%"></div></div>
+          <button type="button" class="ghost icon-only copy" data-copy="amount" data-i18n-aria="copy"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg></button>
+        </div>
+        <div class="tile date" data-reveal-tile>
+          <span class="ti"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span>
+          <div class="tb"><label data-i18n="fDate"></label><div class="val" id="vDate"></div><div class="sub" id="vDateSub"></div><div class="skel" style="width:55%"></div></div>
+          <button type="button" class="ghost icon-only copy" data-copy="date" data-i18n-aria="copy"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg></button>
+        </div>
+      </div>
+
+      <div class="actions" id="actions" hidden>
+        <button type="button" class="ghost" id="copyJson">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1"/></svg>
+          <span data-i18n="copyJson"></span>
+        </button>
+        <button type="button" class="ghost" id="downloadJson">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>
+          <span data-i18n="downloadJson"></span>
+        </button>
+      </div>
+
+      <details class="raw" id="raw" hidden>
+        <summary>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>
+          <span data-i18n="rawT"></span>
+          <span class="count" id="lineCount"></span>
+          <svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </summary>
+        <pre id="ocr"></pre>
+      </details>
+    </article>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© <span id="year"></span> ReceiptAI</span>
+    <span class="dotsep"><span data-i18n="f1"></span><span data-i18n="f2"></span><span data-i18n="f3"></span></span>
+  </div>
+</footer>
+
+<div class="toast" id="toast" role="status"><span class="tdot"></span><span id="toastText"></span></div>
+
+<script type="module">
+  /* ---------- i18n ---------- */
+  const I18N = {
+    en: {
+      brandTag: "Receipt extraction",
+      eyebrow: "Powered by PaddleOCR + GPT-4o",
+      heroA: "Turn receipts into", heroB: "structured data",
+      lede: "Drop a receipt or transfer slip. PaddleOCR reads every line, then GPT-4o pulls out who sent it, how much, and when.",
+      s1t: "Upload", s1d: "Image goes to your local server",
+      s2t: "Read & extract", s2d: "PaddleOCR reads, GPT-4o understands",
+      s3t: "Review", s3d: "Copy fields or the full JSON",
+      upTitle: "Receipt image", upSub: "One image per extraction",
+      dropTitle: "Drag & drop your receipt", dropOr: "or", browse: "browse your files",
+      maxSize: "Max 10 MB", pasteA: "Tip: paste a screenshot with",
+      replace: "Replace", remove: "Remove image",
+      extract: "Extract data", uploading: "Uploading…", analyzing: "Reading receipt…",
+      resTitle: "Extracted data", resSub: "Fields detected by GPT-4o",
+      bIdle: "Waiting", bReady: "Ready", bBusy: "Processing", bDone: "Extracted", bError: "Failed",
+      emptyT: "Nothing extracted yet",
+      emptyD: "Upload a receipt and click “Extract data” to see the sender, amount and date here.",
+      successT: "Extraction complete",
+      fSender: "Sender", fAmount: "Amount", fDate: "Date",
+      notFound: "Not found on receipt",
+      copy: "Copy", copied: "Copied to clipboard", copyJson: "Copy JSON", downloadJson: "Download JSON",
+      rawT: "Raw OCR text", lines: (n) => `${n} line${n === 1 ? "" : "s"}`,
+      errType: "That file type isn't supported. Use PNG, JPG, WEBP, BMP or TIFF.",
+      errSize: "That image is larger than 10 MB. Please choose a smaller file.",
+      errNetwork: "Can't reach the server. Is app.py running?",
+      errServer: (c) => `The server returned an error (${c}).`,
+      errCopy: "Couldn't copy to the clipboard.",
+      theme: "Toggle light / dark theme",
+      f1: "Runs on your machine", f2: "Text by PaddleOCR", f3: "Fields by GPT-4o",
+    },
+    fr: {
+      brandTag: "Extraction de reçus",
+      eyebrow: "Propulsé par PaddleOCR + GPT-4o",
+      heroA: "Transformez vos reçus en", heroB: "données structurées",
+      lede: "Déposez un reçu ou un avis de virement. PaddleOCR lit chaque ligne, puis GPT-4o identifie l’expéditeur, le montant et la date.",
+      s1t: "Importer", s1d: "L’image va vers votre serveur local",
+      s2t: "Lire & extraire", s2d: "PaddleOCR lit, GPT-4o comprend",
+      s3t: "Vérifier", s3d: "Copiez les champs ou le JSON",
+      upTitle: "Image du reçu", upSub: "Une image par extraction",
+      dropTitle: "Glissez-déposez votre reçu", dropOr: "ou", browse: "parcourez vos fichiers",
+      maxSize: "10 Mo max", pasteA: "Astuce : collez une capture avec",
+      replace: "Remplacer", remove: "Retirer l’image",
+      extract: "Extraire les données", uploading: "Envoi…", analyzing: "Lecture du reçu…",
+      resTitle: "Données extraites", resSub: "Champs détectés par GPT-4o",
+      bIdle: "En attente", bReady: "Prêt", bBusy: "Traitement", bDone: "Extrait", bError: "Échec",
+      emptyT: "Aucune extraction pour l’instant",
+      emptyD: "Importez un reçu puis cliquez sur « Extraire les données » pour voir l’expéditeur, le montant et la date ici.",
+      successT: "Extraction terminée",
+      fSender: "Expéditeur", fAmount: "Montant", fDate: "Date",
+      notFound: "Introuvable sur le reçu",
+      copy: "Copier", copied: "Copié dans le presse-papiers", copyJson: "Copier le JSON", downloadJson: "Télécharger le JSON",
+      rawT: "Texte OCR brut", lines: (n) => `${n} ligne${n > 1 ? "s" : ""}`,
+      errType: "Ce type de fichier n’est pas pris en charge. Utilisez PNG, JPG, WEBP, BMP ou TIFF.",
+      errSize: "Cette image dépasse 10 Mo. Choisissez un fichier plus léger.",
+      errNetwork: "Impossible de joindre le serveur. app.py est-il lancé ?",
+      errServer: (c) => `Le serveur a renvoyé une erreur (${c}).`,
+      errCopy: "Impossible de copier dans le presse-papiers.",
+      theme: "Basculer thème clair / sombre",
+      f1: "Tourne sur votre machine", f2: "Texte par PaddleOCR", f3: "Champs par GPT-4o",
+    },
+  };
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  };
+  let lang = store.get("rx-lang") || (navigator.language || "en").slice(0, 2);
+  if (!I18N[lang]) lang = "en";
+  const t = (k, ...a) => { const v = I18N[lang][k]; return typeof v === "function" ? v(...a) : v; };
+
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => [...document.querySelectorAll(s)];
+
+  /* ---------- Motion (vanilla build of framer-motion) ---------- */
+  let M = null;
+  const motionReady = import("https://cdn.jsdelivr.net/npm/motion@11.18.2/+esm")
+    .then((m) => (M = m)).catch(() => null);
+  const EASE = [0.22, 1, 0.36, 1];
+  function anim(el, kf, opts) {
+    if (!M || !el) return Promise.resolve();
+    return M.animate(el, kf, opts);
+  }
+
+  /* ---------- State ---------- */
+  const ALLOWED = ["png", "jpg", "jpeg", "bmp", "webp", "tif", "tiff"];
+  const MAX = 10 * 1024 * 1024;
+  let current = null, previewUrl = null, lastResult = null, busy = false, badgeKey = "bIdle";
+
+  function applyI18n() {
+    document.documentElement.lang = lang;
+    $$("[data-i18n]").forEach((el) => { const v = t(el.dataset.i18n); if (typeof v === "string") el.textContent = v; });
+    $$("[data-i18n-aria]").forEach((el) => { const v = t(el.dataset.i18nAria); el.setAttribute("aria-label", v); el.title = v; });
+    $$(".seg button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+    $("#badgeText").textContent = t(badgeKey);
+    if (busy) $("#goLabel").textContent = t("analyzing");
+    if (lastResult) renderFields(lastResult.fields, false);
+  }
+
+  function setBadge(state, key) {
+    badgeKey = key;
+    const b = $("#badge");
+    b.dataset.state = state;
+    $("#badgeText").textContent = t(key);
+    anim(b, { scale: [0.85, 1] }, { type: "spring", stiffness: 500, damping: 22 });
+  }
+
+  function setStep(i, state) {
+    const s = $(`.step[data-step="${i}"]`);
+    if (s.dataset.state === state) return;
+    s.dataset.state = state;
+    if (state === "done" || state === "active") anim(s.querySelector(".ico"), { scale: [0.7, 1.08, 1] }, { duration: 0.45, ease: EASE });
+  }
+  function setConn(i, p) { $(`.conn[data-conn="${i}"]`).style.setProperty("--p", p); }
+  function resetSteps() { [0, 1, 2].forEach((i) => setStep(i, "idle")); setConn(0, 0); setConn(1, 0); }
+
+  function fmtSize(b) {
+    const u = lang === "fr" ? ["o", "Ko", "Mo"] : ["B", "KB", "MB"];
+    const i = b < 1024 ? 0 : b < 1048576 ? 1 : 2;
+    const n = b / Math.pow(1024, i);
+    return new Intl.NumberFormat(lang, { maximumFractionDigits: i ? 1 : 0 }).format(n) + " " + u[i];
+  }
+
+  function showError(msg) {
+    const e = $("#err");
+    $("#errText").textContent = msg;
+    const wasHidden = e.hidden;
+    e.hidden = false;
+    if (wasHidden) anim(e, { opacity: [0, 1], y: [-6, 0] }, { duration: 0.3, ease: EASE });
+    anim(e, { x: [0, -9, 9, -6, 6, -3, 3, 0] }, { duration: 0.5 });
+    e.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  function clearError() { $("#err").hidden = true; }
+
+  /* ---------- File selection ---------- */
+  function setFile(f) {
+    if (!f) return;
+    const ext = (f.name.split(".").pop() || "").toLowerCase();
+    if (!ALLOWED.includes(ext) && !/^image\/(png|jpe?g|bmp|webp|tiff)$/.test(f.type)) return showError(t("errType"));
+    if (f.size > MAX) return showError(t("errSize"));
+    clearError();
+    current = f;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(f);
+    $("#previewImg").src = previewUrl;
+    $("#previewImg").alt = f.name;
+    $("#fileName").textContent = f.name;
+    $("#fileSize").textContent = fmtSize(f.size);
+    $("#drop").hidden = true;
+    const p = $("#preview");
+    p.hidden = false;
+    anim(p, { opacity: [0, 1], scale: [0.97, 1] }, { duration: 0.45, ease: EASE });
+    $("#go").disabled = false;
+    resetSteps();
+    setStep(0, "active");
+    if (!lastResult) setBadge("idle", "bReady");
+  }
+
+  function clearFile() {
+    current = null;
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = null;
+    $("#file").value = "";
+    $("#preview").hidden = true;
+    const d = $("#drop");
+    d.hidden = false;
+    anim(d, { opacity: [0, 1], y: [8, 0] }, { duration: 0.4, ease: EASE });
+    $("#go").disabled = true;
+    clearError();
+    resetSteps();
+    if (!lastResult) setBadge("idle", "bIdle");
+  }
+
+  const drop = $("#drop"), input = $("#file");
+  drop.addEventListener("click", () => input.click());
+  drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); } });
+  input.addEventListener("change", () => setFile(input.files[0]));
+  let dragDepth = 0;
+  drop.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; drop.classList.add("over"); });
+  drop.addEventListener("dragover", (e) => e.preventDefault());
+  drop.addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; drop.classList.remove("over"); } });
+  drop.addEventListener("drop", (e) => { e.preventDefault(); dragDepth = 0; drop.classList.remove("over"); setFile(e.dataTransfer.files[0]); });
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => e.preventDefault());
+  document.addEventListener("paste", (e) => {
+    if (busy) return;
+    const item = [...(e.clipboardData?.items || [])].find((i) => i.kind === "file" && i.type.startsWith("image/"));
+    if (!item) return;
+    const f = item.getAsFile();
+    setFile(new File([f], f.name && f.name !== "image.png" ? f.name : `pasted-${Date.now()}.png`, { type: f.type }));
+  });
+  $("#replaceBtn").addEventListener("click", () => input.click());
+  $("#removeBtn").addEventListener("click", clearFile);
+
+  /* ---------- Request ---------- */
+  function send(file) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/extract");
+      xhr.responseType = "json";
+      xhr.upload.onprogress = (e) => {
+        if (!e.lengthComputable) return;
+        const p = e.loaded / e.total;
+        $("#progress").style.transform = `scaleX(${p})`;
+        setConn(0, p);
+      };
+      xhr.upload.onload = () => {
+        setStep(0, "done"); setConn(0, 1); setStep(1, "active");
+        $("#goLabel").textContent = t("analyzing");
+        $("#progress").style.transform = "scaleX(0)";
+      };
+      xhr.onload = () => resolve({ status: xhr.status, data: xhr.response });
+      xhr.onerror = () => reject(new Error(t("errNetwork")));
+      const fd = new FormData();
+      fd.append("file", file);
+      xhr.send(fd);
+    });
+  }
+
+  function setBusy(on) {
+    busy = on;
+    const go = $("#go");
+    go.classList.toggle("busy", on);
+    go.disabled = on || !current;
+    $("#goLabel").textContent = on ? t("uploading") : t("extract");
+    $("#frame").classList.toggle("busy", on);
+    $("#replaceBtn").disabled = on;
+    $("#removeBtn").disabled = on;
+  }
+
+  function showLoading() {
+    $("#empty").hidden = true;
+    $("#success").hidden = true;
+    $("#actions").hidden = true;
+    const f = $("#fields");
+    f.hidden = false;
+    $$(".tile").forEach((el) => el.classList.add("loading"));
+    anim($$(".tile"), { opacity: [0, 1], y: [10, 0] }, { duration: 0.4, delay: M ? M.stagger(0.08) : 0, ease: EASE });
+  }
+
+  $("#go").addEventListener("click", async () => {
+    if (!current || busy) return;
+    clearError();
+    setBusy(true);
+    setBadge("busy", "bBusy");
+    resetSteps();
+    setStep(0, "active");
+    showLoading();
+    const started = performance.now();
+    try {
+      const { status, data } = await send(current);
+      if (data && data.ocr_text !== undefined) setRaw(data.ocr_text);
+      if (status < 200 || status >= 300 || !data || !data.fields) {
+        throw new Error((data && data.error) || t("errServer", status));
+      }
+      lastResult = data;
+      setStep(1, "done"); setConn(1, 1); setStep(2, "done");
+      setBadge("done", "bDone");
+      renderFields(data.fields, true);
+      const secs = ((performance.now() - started) / 1000).toFixed(1);
+      $("#elapsed").textContent = new Intl.NumberFormat(lang, { minimumFractionDigits: 1 }).format(secs) + " s";
+      const s = $("#success");
+      s.hidden = false;
+      anim(s, { opacity: [0, 1], scale: [0.94, 1] }, { type: "spring", stiffness: 380, damping: 24 });
+      $("#actions").hidden = false;
+      anim($("#actions"), { opacity: [0, 1], y: [6, 0] }, { duration: 0.4, delay: 0.35, ease: EASE });
+      toast(t("successT"));
+    } catch (err) {
+      lastResult = null;
+      $$(".step").forEach((s) => { if (s.dataset.state === "active") s.dataset.state = "error"; });
+      setBadge("error", "bError");
+      $("#fields").hidden = true;
+      $("#actions").hidden = true;
+      $("#empty").hidden = false;
+      showError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  /* ---------- Rendering ---------- */
+  function setRaw(text) {
+    const raw = $("#raw");
+    $("#ocr").textContent = text || "—";
+    const n = text ? text.split("\n").filter(Boolean).length : 0;
+    $("#lineCount").textContent = t("lines", n);
+    if (raw.hidden) { raw.hidden = false; anim(raw, { opacity: [0, 1] }, { duration: 0.4 }); }
+  }
+
+  function setVal(el, v) {
+    const missing = v === null || v === undefined || String(v).trim() === "";
+    el.classList.toggle("missing", missing);
+    el.textContent = missing ? t("notFound") : v;
+    return !missing;
+  }
+
+  function fmtDate(v) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v || "");
+    if (!m) return null;
+    const d = new Date(+m[1], +m[2] - 1, +m[3]);
+    return isNaN(d) ? null : new Intl.DateTimeFormat(lang, { dateStyle: "long" }).format(d);
+  }
+
+  // Count the amount up from 0 while keeping the receipt's own formatting.
+  function countUp(el, raw) {
+    const m = /(\d[\d.,\s]*\d|\d)/.exec(raw);
+    if (!m || !M) { el.textContent = raw; return; }
+    const num = m[1];
+    const decM = /[.,](\d{1,2})$/.exec(num);
+    const decSep = decM ? num[num.length - decM[1].length - 1] : null;
+    const dec = decM ? decM[1].length : 0;
+    const intPart = decM ? num.slice(0, -(dec + 1)) : num;
+    const thouSep = (intPart.match(/[.,\s]/) || [null])[0];
+    const target = parseFloat(intPart.replace(/[.,\s]/g, "") + (dec ? "." + decM[1] : ""));
+    if (!isFinite(target)) { el.textContent = raw; return; }
+    const fmt = (v) => {
+      let [i, d] = v.toFixed(dec).split(".");
+      if (thouSep) i = i.replace(/\B(?=(\d{3})+(?!\d))/g, thouSep);
+      return raw.slice(0, m.index) + i + (dec ? decSep + d : "") + raw.slice(m.index + num.length);
+    };
+    M.animate(0, target, { duration: 1.1, ease: EASE, onUpdate: (v) => (el.textContent = fmt(v)), onComplete: () => (el.textContent = raw) });
+  }
+
+  function renderFields(f, animate) {
+    $$(".tile").forEach((el) => el.classList.remove("loading"));
+    setVal($("#vSender"), f.sender_name);
+    const hasAmount = setVal($("#vAmount"), f.amount);
+    const hasDate = setVal($("#vDate"), f.date);
+    const pretty = hasDate ? fmtDate(f.date) : null;
+    if (pretty) { $("#vDate").textContent = pretty; $("#vDateSub").textContent = f.date; }
+    else $("#vDateSub").textContent = "";
+    $$(".tile .copy").forEach((b) => { const v = f[b.dataset.copy]; b.hidden = v === null || v === undefined || v === ""; });
+    if (animate) {
+      if (hasAmount) countUp($("#vAmount"), String(f.amount));
+      anim($$(".tile .val"), { opacity: [0, 1], x: [-8, 0] }, { duration: 0.45, delay: M ? M.stagger(0.1) : 0, ease: EASE });
+    }
+  }
+
+  /* ---------- Copy / download / toast ---------- */
+  let toastTimer;
+  function toast(msg) {
+    $("#toastText").textContent = msg;
+    const el = $("#toast");
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+  }
+  async function copy(text) {
+    try { await navigator.clipboard.writeText(text); toast(t("copied")); }
+    catch { toast(t("errCopy")); }
+  }
+  $$(".tile .copy").forEach((b) => b.addEventListener("click", () => {
+    if (!lastResult) return;
+    copy(String(lastResult.fields[b.dataset.copy]));
+    anim(b, { scale: [1, 0.8, 1.15, 1] }, { duration: 0.4 });
+  }));
+  $("#copyJson").addEventListener("click", () => lastResult && copy(JSON.stringify(lastResult.fields, null, 2)));
+  $("#downloadJson").addEventListener("click", () => {
+    if (!lastResult) return;
+    const blob = new Blob([JSON.stringify({ ...lastResult.fields, ocr_text: lastResult.ocr_text }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (current ? current.name.replace(/\.[^.]+$/, "") : "receipt") + ".json";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+
+  /* ---------- Theme & language ---------- */
+  $("#themeBtn").addEventListener("click", () => {
+    const root = document.documentElement;
+    const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    store.set("rx-theme", root.dataset.theme);
+    anim($$("#themeBtn svg"), { rotate: [-90, 0], scale: [0.6, 1] }, { duration: 0.4, ease: EASE });
+  });
+  $$(".seg button").forEach((b) => b.addEventListener("click", () => {
+    if (b.dataset.lang === lang) return;
+    lang = b.dataset.lang;
+    store.set("rx-lang", lang);
+    applyI18n();
+    anim($$("[data-i18n]"), { opacity: [0.2, 1] }, { duration: 0.35 });
+  }));
+
+  $("#year").textContent = new Date().getFullYear();
+  applyI18n();
+
+  /* ---------- Entrance, scroll reveal & micro-interactions ---------- */
+  motionReady.then(() => {
+    if (!M) return;
+    const root = document.documentElement;
+    if (root.classList.contains("preload")) {
+      const hero = $$('[data-reveal="hero"]'), steps = $$('[data-reveal="step"]'), cards = $$('[data-reveal="card"]');
+      [...hero, ...steps, ...cards].forEach((el) => (el.style.opacity = "0"));
+      root.classList.remove("preload");
+      M.animate(hero, { opacity: [0, 1], y: [24, 0] }, { duration: 0.8, delay: M.stagger(0.1), ease: EASE });
+      M.animate(steps, { opacity: [0, 1], y: [16, 0] }, { duration: 0.6, delay: M.stagger(0.08, { startDelay: 0.35 }), ease: EASE });
+      cards.forEach((card, i) => {
+        M.inView(card, () => {
+          M.animate(card, { opacity: [0, 1], y: [40, 0] }, { duration: 0.8, delay: 0.1 + i * 0.12, ease: EASE });
+        }, { margin: "0px 0px -80px 0px" });
+      });
+    }
+    // Spring hover lift + press feedback on interactive surfaces.
+    const lift = (el, y) => {
+      el.addEventListener("pointerenter", () => !el.disabled && M.animate(el, { y }, { type: "spring", stiffness: 400, damping: 26 }));
+      el.addEventListener("pointerleave", () => M.animate(el, { y: 0, scale: 1 }, { type: "spring", stiffness: 400, damping: 26 }));
+      el.addEventListener("pointerdown", () => !el.disabled && M.animate(el, { scale: 0.97 }, { duration: 0.12 }));
+      el.addEventListener("pointerup", () => M.animate(el, { scale: 1 }, { type: "spring", stiffness: 500, damping: 20 }));
+    };
+    $$(".tile, .step").forEach((el) => lift(el, -3));
+    $$(".cta, .dropzone").forEach((el) => lift(el, -2));
+    $$(".ghost, .icon-btn").forEach((el) => lift(el, -1));
+  });
+</script>
+</body>
+</html>
